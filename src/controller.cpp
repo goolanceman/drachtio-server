@@ -294,7 +294,7 @@ namespace drachtio {
         m_nHomerPort(0), m_nHomerId(0), m_mtu(0), m_bAggressiveNatDetection(false), m_bMemoryDebug(false),
         m_nPrometheusPort(0), m_strPrometheusAddress("0.0.0.0"), m_tcpKeepaliveSecs(UINT16_MAX), m_tportQueuesize(64),
         m_tportMaxConsecutiveTimeouts(0), m_bContactAlias(false), m_bDumpMemory(false),
-        m_minTlsVersion(0), m_bDisableNatDetection(false), m_pBlacklist(nullptr), m_bAlwaysSend180(false),
+        m_minTlsVersion(0), m_bDisableNatDetection(false), m_bDisableSessionTimers(false), m_pBlacklist(nullptr), m_bAlwaysSend180(false),
         m_bGloballyReadableLogs(false), m_bTlsVerifyClientCert(false), m_bRejectRegisterWithNoRealm(false) {
 
         getEnv();
@@ -454,6 +454,7 @@ namespace drachtio {
                 {"tcp-keepalive-interval", required_argument, 0, 'L'},
                 {"min-tls-version", required_argument, 0, 'M'},
                 {"disable-nat-detection", no_argument, 0, 'N'},
+                {"disable-session-timers", no_argument, 0, '@'},
                 {"blacklist-redis-address", required_argument, 0, 'O'},
                 {"blacklist-redis-port", required_argument, 0, 'P'},
                 {"blacklist-redis-key", required_argument, 0, 'Q'},
@@ -669,6 +670,9 @@ namespace drachtio {
 
                 case 'N':
                     m_bDisableNatDetection = true;
+                    break;
+                case '@':
+                    m_bDisableSessionTimers = true;
                     break;
                 case 'O':
                     m_redisAddress = optarg;

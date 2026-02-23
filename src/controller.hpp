@@ -206,6 +206,7 @@ namespace drachtio {
 
     bool isAggressiveNatEnabled(void) { return m_bAggressiveNatDetection; }
     bool isNatDetectionDisabled(void) { return m_bDisableNatDetection; }
+    bool isSessionTimersDisabled(void) { return m_bDisableSessionTimers; }
 
     unsigned int getTcpKeepaliveInterval() { return m_tcpKeepaliveSecs; }
     unsigned int getTportQueuesize() { return m_tportQueuesize; }
@@ -331,6 +332,7 @@ namespace drachtio {
 
     float m_minTlsVersion;
     bool m_bDisableNatDetection;
+    bool m_bDisableSessionTimers;
 
     bool m_bAlwaysSend180;
 
