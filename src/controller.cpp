@@ -294,7 +294,8 @@ namespace drachtio {
         m_nHomerPort(0), m_nHomerId(0), m_mtu(0), m_bAggressiveNatDetection(false), m_bMemoryDebug(false),
         m_nPrometheusPort(0), m_strPrometheusAddress("0.0.0.0"), m_tcpKeepaliveSecs(UINT16_MAX), m_tportQueuesize(64),
         m_tportMaxConsecutiveTimeouts(0), m_bContactAlias(false), m_bDumpMemory(false),
-        m_minTlsVersion(0), m_bDisableNatDetection(false), m_bDisableSessionTimers(false), m_pBlacklist(nullptr), m_bAlwaysSend180(false),
+        m_minTlsVersion(0), m_bDisableNatDetection(false), m_bDisableSessionTimers(false), m_nRefreshWatchSecs(0),
+        m_pBlacklist(nullptr), m_bAlwaysSend180(false),
         m_bGloballyReadableLogs(false), m_bTlsVerifyClientCert(false), m_bRejectRegisterWithNoRealm(false) {
 
         getEnv();
@@ -455,6 +456,7 @@ namespace drachtio {
                 {"min-tls-version", required_argument, 0, 'M'},
                 {"disable-nat-detection", no_argument, 0, 'N'},
                 {"disable-session-timers", no_argument, 0, '@'},
+                {"refresh-watch-secs", required_argument, 0, '#'},
                 {"blacklist-redis-address", required_argument, 0, 'O'},
                 {"blacklist-redis-port", required_argument, 0, 'P'},
                 {"blacklist-redis-key", required_argument, 0, 'Q'},
@@ -674,6 +676,9 @@ namespace drachtio {
                 case '@':
                     m_bDisableSessionTimers = true;
                     break;
+                case '#':
+                    m_nRefreshWatchSecs = ::strtoul(optarg, NULL, 10);
+                    break;
                 case 'O':
                     m_redisAddress = optarg;
                     break;
@@ -790,6 +795,7 @@ namespace drachtio {
         cerr << "    --tls-cipherlist                   list of ciphers to support for TLS connections (default: all strong ciphers supported)" << endl ;
         cerr << "    --min-tls-version                  minimum allowed TLS version for connecting clients (default: 1.0)" << endl ;
         cerr << "    --user-agent-options-auto-respond  If we see this User-Agent header value in an OPTIONS request, automatically send 200 OK" << endl ;
+        cerr << "    --refresh-watch-secs               With --disable-session-timers, BYE a dialog if no re-INVITE/UPDATE arrives in this many seconds (0 = Session-Expires, else 1800)" << endl ;
         cerr << "-v  --version                          Print version and exit" << endl ;
     }
     void DrachtioController::getEnv(void) {
@@ -923,6 +929,10 @@ namespace drachtio {
         if (p) {
             m_tlsCipherList = p;
         }
+        p = std::getenv("DRACHTIO_DISABLE_SESSION_TIMERS");
+        if (p && ::atoi(p) == 1) m_bDisableSessionTimers = true;
+        p = std::getenv("DRACHTIO_REFRESH_WATCH_SECS");
+        if (p) m_nRefreshWatchSecs = ::strtoul(p, NULL, 10);
         p = std::getenv("DRACHTIO_PRESERVE_HEADER_NAMES");
         if (p) {
             vector<string> headers;

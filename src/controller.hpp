@@ -207,6 +207,9 @@ namespace drachtio {
     bool isAggressiveNatEnabled(void) { return m_bAggressiveNatDetection; }
     bool isNatDetectionDisabled(void) { return m_bDisableNatDetection; }
     bool isSessionTimersDisabled(void) { return m_bDisableSessionTimers; }
+    /* Seconds to wait for a session refresh when --disable-session-timers is set.
+       0 means "use the negotiated Session-Expires, else 1800". */
+    unsigned long getRefreshWatchSecs(void) { return m_nRefreshWatchSecs; }
 
     unsigned int getTcpKeepaliveInterval() { return m_tcpKeepaliveSecs; }
     unsigned int getTportQueuesize() { return m_tportQueuesize; }
@@ -333,6 +336,7 @@ namespace drachtio {
     float m_minTlsVersion;
     bool m_bDisableNatDetection;
     bool m_bDisableSessionTimers;
+    unsigned long m_nRefreshWatchSecs;
 
     bool m_bAlwaysSend180;
 

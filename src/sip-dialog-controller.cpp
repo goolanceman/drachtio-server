@@ -1067,7 +1067,11 @@ namespace drachtio {
 
             if (sip->sip_cseq->cs_method == sip_method_invite && sip->sip_status->st_status == 200 && sip->sip_session_expires) {
                 if (theOneAndOnlyController->isSessionTimersDisabled()) {
-                    DR_LOG(log_info) << "SipDialogController::processResponseOutsideDialog - (UAC) session timer header ignored (disabled via config)";
+                    /* Do not become the refresher. Watch the negotiated interval and BYE if it is missed. */
+                    unsigned long watch = theOneAndOnlyController->getRefreshWatchSecs();
+                    if (watch == 0) watch = sip->sip_session_expires->x_delta;
+                    DR_LOG(log_info) << "SipDialogController::processResponseOutsideDialog - (UAC) session timer refresh disabled; watching " << watch << "s for a refresh";
+                    dlg->setRefreshWatch(watch);
                 } else {
                     DR_LOG(log_info) << "SipDialogController::processResponseOutsideDialog - (UAC) detected session timer header: ";
                     dlg->setSessionTimer( sip->sip_session_expires->x_delta,
@@ -1075,6 +1079,12 @@ namespace drachtio {
                         SipDialog::we_are_refresher :
                         SipDialog::they_are_refresher) ;
                 }
+            }
+            else if (sip->sip_cseq->cs_method == sip_method_invite && sip->sip_status->st_status == 200 &&
+                theOneAndOnlyController->isSessionTimersDisabled()) {
+                unsigned long watch = theOneAndOnlyController->getRefreshWatchSecs();
+                DR_LOG(log_info) << "SipDialogController::processResponseOutsideDialog - (UAC) no Session-Expires; watching " << (watch ? watch : 1800) << "s for a refresh";
+                dlg->setRefreshWatch(watch);
             }
             else if (sip->sip_status->st_status > 200) {
                 IIP_Clear(m_invitesInProgress, iip);
@@ -1499,8 +1509,27 @@ namespace drachtio {
                     /* set session timer if required */
                     sip_session_expires_t *sessionExpires = nullptr;
                     bool bAddRequireTimer = false;
-                    if( 200 == code && sip->sip_request->rq_method == sip_method_invite &&
-                        !theOneAndOnlyController->isSessionTimersDisabled() ) {
+                    if( 200 == code && sip->sip_request->rq_method == sip_method_invite && theOneAndOnlyController->isSessionTimersDisabled() ) {
+                        /* Watch only. Never send a refresh re-INVITE. */
+                        unsigned long watch = theOneAndOnlyController->getRefreshWatchSecs();
+                        if( watch == 0 ) {
+                            string strSessionExpires ;
+                            if( searchForHeader( tags, siptag_session_expires_str, strSessionExpires ) ) {
+                                sip_session_expires_t* se = sip_session_expires_make(m_pController->getHome(), strSessionExpires.c_str() );
+                                if( se ) {
+                                    watch = se->x_delta;
+                                    su_free( m_pController->getHome(), se ) ;
+                                }
+                            }
+                            else if( sip->sip_session_expires ) {
+                                watch = sip->sip_session_expires->x_delta;
+                            }
+                        }
+                        DR_LOG(log_info) << "SipDialogController::doRespondToSipRequest - session timers disabled; watching "
+                            << (watch ? watch : 1800) << "s for a refresh";
+                        dlg->setRefreshWatch(watch);
+                    }
+                    else if( 200 == code && sip->sip_request->rq_method == sip_method_invite && !theOneAndOnlyController->isSessionTimersDisabled() ) {
                         /* RFC 4028 sec 9: the 2xx MUST carry Require: timer when the refresher is
                            the UAC, and SHOULD when the refresher is the UAS and the request
                            advertised Supported: timer. */
@@ -1907,10 +1936,18 @@ namespace drachtio {
                 /* if this is a re-INVITE or an UPDATE deal with session timers */
                 if( sip_method_invite == sip->sip_request->rq_method || sip_method_update == sip->sip_request->rq_method ) {
                     bool weAreRefresher = false;
-                    if( dlg->hasSessionTimer() ) { 
+                    if( dlg->hasSessionTimer() ) {
                         DR_LOG(log_info) << "SipDialogController::processRequestInsideDialog - canceling session expires timer due to re-invite"  ;
                         weAreRefresher = dlg->areWeRefresher();
                         dlg->cancelSessionTimer() ;
+                    }
+                    if( theOneAndOnlyController->isSessionTimersDisabled() ) {
+                        unsigned long watch = theOneAndOnlyController->getRefreshWatchSecs();
+                        if( watch == 0 && sip->sip_session_expires ) watch = sip->sip_session_expires->x_delta;
+                        DR_LOG(log_info) << "SipDialogController::processRequestInsideDialog - session refresh seen; "
+                            << (dlg->hasRefreshWatch() ? "resetting" : "arming") << " refresh watch to "
+                            << (watch ? watch : 1800) << "s";
+                        dlg->setRefreshWatch(watch);
                     }
 
                     /* reject if session timer is too small */
@@ -2070,7 +2107,19 @@ namespace drachtio {
                 
                 /* reset session expires timer, if provided */
                 sip_session_expires_t* se = sip_session_expires(sip) ;
-                if( se && !theOneAndOnlyController->isSessionTimersDisabled() ) {
+                if( theOneAndOnlyController->isSessionTimersDisabled() ) {
+                    std::shared_ptr<SipDialog> dlg ;
+                    nta_leg_t* leg = nta_leg_by_call_id(m_pController->getAgent(), sip->sip_call_id->i_id);
+                    if(leg && findDialogByLeg( leg, dlg )) {
+                        unsigned long watch = theOneAndOnlyController->getRefreshWatchSecs();
+                        if( watch == 0 && se ) watch = se->x_delta;
+                        DR_LOG(log_info) << "SipDialogController::processResponseInsideDialog: session timers disabled; "
+                            << (dlg->hasRefreshWatch() ? "resetting" : "arming") << " refresh watch to "
+                            << (watch ? watch : 1800) << "s";
+                        dlg->setRefreshWatch(watch);
+                    }
+                }
+                else if( se ) {
                     std::shared_ptr<SipDialog> dlg ;
                     nta_leg_t* leg = nta_leg_by_call_id(m_pController->getAgent(), sip->sip_call_id->i_id);
                     DR_LOG(log_debug) << "SipDialogController::processResponseInsideDialog: searching for dialog by leg " << std::hex << (void *) leg;
@@ -2164,7 +2213,15 @@ namespace drachtio {
         if( 200 == status ) {
             /* reset session expires timer, if provided */
             sip_session_expires_t* se = sip_session_expires(sip) ;
-            if( se && !theOneAndOnlyController->isSessionTimersDisabled() ) {
+            if( theOneAndOnlyController->isSessionTimersDisabled() ) {
+                unsigned long watch = theOneAndOnlyController->getRefreshWatchSecs();
+                if( watch == 0 && se ) watch = se->x_delta;
+                DR_LOG(log_info) << "SipDialogController::processResponseToRefreshingReinvite: session timers disabled; "
+                    << (dlg->hasRefreshWatch() ? "resetting" : "arming") << " refresh watch to "
+                    << (watch ? watch : 1800) << "s";
+                dlg->setRefreshWatch(watch);
+            }
+            else if( se ) {
                 //TODO: if session-expires value is less than min-se ACK and then BYE with Reason header
                 dlg->setSessionTimer( se->x_delta,
                     !se->x_refresher || 0 == strcmp( se->x_refresher, "uac") ?

@@ -157,6 +157,13 @@ namespace drachtio {
 		bool hasSessionTimer(void) { return NULL != m_timerSessionRefresh; }
 		void cancelSessionTimer(void) ;
 		void doSessionTimerHandling(void) ;
+
+		/* Watch only. Used when --disable-session-timers is set.
+		   Tracks remote refreshes and BYEs on expiry. Never sends a refresh. */
+		void setRefreshWatch( unsigned long nSecs ) ;
+		bool hasRefreshWatch(void) { return NULL != m_timerRefreshWatch; }
+		void cancelRefreshWatch(void) ;
+		void doRefreshWatchHandling(void) ;
 		DialogType_t getRole(void) const { return m_type; }
 		bool areWeRefresher(void) { return we_are_refresher == m_refresher; }
 		unsigned long getSessionExpiresSecs(void) { return m_nSessionExpiresSecs; }
@@ -275,6 +282,10 @@ namespace drachtio {
     su_timer_t*     m_timerSessionRefresh ;
     SessionRefresher_t	m_refresher ;
     std::weak_ptr<SipDialog>* m_ppSelf ;
+
+    /* refresh watch (--disable-session-timers only); never the refresher */
+    su_timer_t*     m_timerRefreshWatch ;
+    std::weak_ptr<SipDialog>* m_ppRefreshWatch ;
 
 		std::string 			m_sourceAddress ;
 		unsigned int 	m_sourcePort ;
