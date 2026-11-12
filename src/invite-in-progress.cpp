@@ -179,10 +179,19 @@ namespace drachtio {
   }
 
   void IIP_Clear(InvitesInProgress_t& iips, std::shared_ptr<IIP>& iip) {
-    std::lock_guard<std::mutex> lock(iip_mutex);
+    nta_incoming_t* irq = nullptr;
 
-    nta_incoming_t* irq = const_cast<nta_incoming_t*>(iip->irq());
-    nta_outgoing_t* orq = const_cast<nta_outgoing_t*>(iip->orq());
+    {
+      /* iip_mutex is not recursive. nta_incoming_destroy and
+       * nta_reliable_destroy re-enter this thread (reliable_flush ->
+       * processPrack -> IIP_FindByReliable). Erase first so that re-entry
+       * misses, then drop the lock before calling sofia. */
+      std::lock_guard<std::mutex> lock(iip_mutex);
+      irq = const_cast<nta_incoming_t*>(iip->irq());
+      auto &idx = iips.get<LegTag>();
+      idx.erase(iip->leg());
+    }
+
     if (irq) {
         std::shared_ptr<SipDialog> dlg = iip->dlg();
         if (dlg) dlg->clearInviteIrq();
@@ -197,9 +206,6 @@ namespace drachtio {
     // later note: the orq of the uac INVITE (as well as orq of uac ACK) is destroyed in SipDialog destructor
 
     iip->destroyAllReliables();
-   
-    auto &idx = iips.get<LegTag>();
-    idx.erase(iip->leg());
   }
 
   size_t IIP_Size(const InvitesInProgress_t& iips) {
